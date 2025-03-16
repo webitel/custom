@@ -1,0 +1,5 @@
+syntax = "proto3";
+
+package webitel.custom;
+
+option go_package = "github.com/webitel/proto/gen/custom;custompb";

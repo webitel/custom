@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package webitel.custom;
+
+option go_package = "github.com/webitel/proto/gen/custom;custompb";
+
+import "custom/dataset.proto";
+
+// InputDictionary specification for
+// a composite type structure declaration.
+message InputDictionary {
+  // int64 dc = 0;
+
+  reserved 1; // string id = 1; // Deprecated. Use `repo` instead. The [type] name (singular form), e.g.: `country`.
+  string name = 2; // string repo = 2; // Repository (dataset) name (plural form), e.g.: `countries`.
+  // // string name = 3; // A User-friendly [id] name ; lang: specific.
+  // string path = 4; // Readonly. Relative path to access the dataset APIs, e.g.: `dictionaries/countries`.
+
+  string title = 3; // A User-friendly [id] name ; lang: specific.
+  string about = 5; // Optional. Short description.
+
+  reserved 6 to 10;
+
+  // Fields of the struct type.
+  repeated Field fields = 11;
+
+  // type constraints
+
+  // TODO: Accept: int [fields.position]; string [fields.id];
+  
+  // Required. Primary [fields.id] key.
+  // Used as [lookup].id setting for this [struct] type.
+  string primary = 12;
+  // Required. Display [fields.id] key.
+  // Used as [lookup].name setting for this [struct] type.
+  string display = 13;
+  // INDEX fields.
+  map<string, Index> indices = 14;
+  // // Extension extension = 15;
+
+  // reserved 15 to 20;
+  
+  // // Readonly. Is [ system / custom ] type ?
+  // // NOTE: Custom [types.repo] are always prefixed with `/dictionaries`
+  // bool readonly = 21;
+  // // Readonly. System- type(s) support only !
+  // bool extendable = 22;
+  // // // Extension fields type.
+  // // Extension extension = 23;
+
+  // // Administer access control ? Enable RbAC ?
+  // reserved 24; // bool administered = 24;
+  // // Readonly. RbAC objclass identity.
+  // reserved 25; // string objclass = 25;
+
+  // // FIXME: -or- define Dictionary model with fields below !?
+  // // NOTE: non-custom (system) types has no such fields ...
+
+  // int64 created_at = 31;
+  // Lookup created_by = 32;
+  // int64 updated_at = 33;
+  // Lookup updated_by = 34;
+}
