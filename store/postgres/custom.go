@@ -5,6 +5,7 @@ import (
 	"path"
 	"strings"
 
+	sq "github.com/Masterminds/squirrel"
 	"github.com/jackc/pgx/v5/pgconn"
 	custom "github.com/webitel/custom/data"
 	customrel "github.com/webitel/custom/reflect"
@@ -91,23 +92,76 @@ func (rel sqlident) Schema() string {
 	return ""
 }
 
+// JUST return {column} name FOR SELECT
+// MAY JOIN related table(s) if needed ...
+//
+// DO NOT include query.Column(..) inside this method,
+// just return {sqlident} column relation name instead !
+type columnQuery func(query SelectQ, left string, join names) (SelectQ, sqlident)
+
+func customColumnName(name string) columnQuery {
+	// // since field(s).name MAY be complex, like:
+	// // - agents.display    ; "user.name"
+	// // - contacts.display  ; "name.common_name"
+	// // we just trim nested object(s) path
+	// // name = lookupColumnName(name)
+	// if dot := strings.LastIndexByte(name, '.'); dot >= 0 {
+	// 	name = name[dot+1:]
+	// }
+	return func(query SelectQ, left string, _ names) (SelectQ, sqlident) {
+		return query, sqlident{left, name}
+	}
+}
+
+// FROM [directory.wbt_auth] AS [left]
+func customRoleName(query SelectQ, left string, _ names) (SelectQ, sqlident) {
+	return query, sqlident{fmt.Sprintf(
+		"COALESCE(%[1]s.name,(%[1]s.auth)::::text,'[deleted]')", left,
+	)}
+}
+
+// FROM [directory.wbt_user] AS [left]
+func customUserName(query SelectQ, left string, _ names) (SelectQ, sqlident) {
+	return query, sqlident{fmt.Sprintf(
+		"COALESCE(%[1]s.name,(%[1]s.username)::::text,'[deleted]')", left,
+	)}
+}
+
+// FROM [call_center.cc_agent] AS [left]
+// LEFT JOIN [directory.wbt_user] AS "ua"
+func customAgentName(query sq.SelectBuilder, left string, join names) (SelectQ, sqlident) {
+	right := (left + "ua") // LEFT JOIN [directory.wbt_user] AS [alias]
+	if _, ok := join[right]; !ok {
+		joinUser := JOIN{
+			Kind:   "LEFT JOIN",
+			Source: sqlident{"directory", "wbt_user"}.String(),
+			Alias:  right,
+			Pred:   fmt.Sprintf("%s.user_id = %s.id", left, right),
+		}
+		query = query.JoinClause(&joinUser)
+	}
+	return customUserName(query, right, join)
+}
+
 // customTable map
 type customTable struct {
-	rel sqlident // schema.table
-	dc  string   // [primary] column name
-	dn  string   // [display] column name
+	rel sqlident    // schema.table
+	dc  string      // [primary] simple column name
+	dn  columnQuery // [display] complex column name
+	// dn  string   // [display] column name
 }
 
 var knownTableMap = map[string]customTable{ // string
-	"roles":                          {rel: sqlident{"directory", "wbt_auth"}, dc: "dc"},                  // "directory.wbt_auth",
-	"users":                          {rel: sqlident{"directory", "wbt_user"}, dc: "dc"},                  // "directory.wbt_user",
-	"cases":                          {rel: sqlident{"cases", "case"}, dc: "dc"},                          // "cases.case",
-	"contacts":                       {rel: sqlident{"contacts", "contact"}, dc: "dc", dn: "common_name"}, // "contacts.contact",
-	"calendars":                      {rel: sqlident{"flow", "calendar"}, dc: "domain_id"},                // flow.calendar
-	"call_center/list":               {rel: sqlident{"call_center", "cc_list"}, dc: "domain_id"},
-	"call_center/agents":             {rel: sqlident{"call_center", "cc_agent"}, dc: "domain_id"},
-	"call_center/queues":             {rel: sqlident{"call_center", "cc_queue"}, dc: "domain_id"},
-	"call_center/communication_type": {rel: sqlident{"call_center", "cc_communication"}, dc: "domain_id"},
+	"roles":                          {rel: sqlident{"directory", "wbt_auth"}, dc: "dc", dn: customRoleName},                // "directory.wbt_auth",
+	"users":                          {rel: sqlident{"directory", "wbt_user"}, dc: "dc", dn: customUserName},                // "directory.wbt_user",
+	"cases":                          {rel: sqlident{"cases", "case"}, dc: "dc", dn: customColumnName("name")},              // "cases.case",
+	"cases/priorities":               {rel: sqlident{"cases", "priority"}, dc: "dc", dn: customColumnName("name")},          // "cases.priority",
+	"contacts":                       {rel: sqlident{"contacts", "contact"}, dc: "dc", dn: customColumnName("common_name")}, // "contacts.contact",
+	"calendars":                      {rel: sqlident{"flow", "calendar"}, dc: "domain_id", dn: customColumnName("name")},    // flow.calendar
+	"call_center/list":               {rel: sqlident{"call_center", "cc_list"}, dc: "domain_id", dn: customColumnName("name")},
+	"call_center/agents":             {rel: sqlident{"call_center", "cc_agent"}, dc: "domain_id", dn: customAgentName},
+	"call_center/queues":             {rel: sqlident{"call_center", "cc_queue"}, dc: "domain_id", dn: customColumnName("name")},
+	"call_center/communication_type": {rel: sqlident{"call_center", "cc_communication"}, dc: "domain_id", dn: customColumnName("name")},
 }
 
 func init() {
@@ -142,6 +196,9 @@ func customDatasetTable(of customrel.DatasetDescriptor) customTable {
 		},
 		// default
 		dc: columnDc, // "dc"
+		dn: customColumnName(
+			of.Display().Name(),
+		),
 	}
 }
 

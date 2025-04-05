@@ -194,8 +194,9 @@ func (ds *dataset) Columns(from SelectQ, rel string, fieldsQ ...string) (query S
 		rtyp    = ds.rtyp
 		fields  = rtyp.Fields()
 		primary = rtyp.Primary()
+		display = rtyp.Display()
 		// is extension ?
-		_, extis = rtyp.(customrel.ExtensionDescriptor)
+		_, extensionIs = rtyp.(customrel.ExtensionDescriptor)
 		// extpk    = false //
 	)
 	// PREPARE columns for SELECT !
@@ -206,7 +207,7 @@ func (ds *dataset) Columns(from SelectQ, rel string, fieldsQ ...string) (query S
 		addField = func(fd customrel.FieldDescriptor) error {
 			// Do NOT select PRIMARY KEY value into result !
 			// [NOTE]: is hidden from view ; available from [SUPER] data record !
-			if extis && fd == primary { // fd.Name() == primary.Name() {
+			if extensionIs && (fd == primary || fd == display) { // fd.Name() == primary.Name() {
 				// return nil // skip
 				return fmt.Errorf("custom: extension.fields( %s ) no such field", fd.Name()) // hidden from data view !
 			}
@@ -230,40 +231,47 @@ func (ds *dataset) Columns(from SelectQ, rel string, fieldsQ ...string) (query S
 						break
 					}
 					// REFERENCE[]
-					trel := elem.(*custom.Lookup).Dictionary()
-					// [ global | custom ]
-					table := customDatasetTable(trel)
-					refPK := trel.Primary().Name()
-					refDN := lookupColumnName(trel.Display().Name()) // contacts{ display: "name.common_name" }
-					right := "r" + strconv.Itoa(fd.Num())            // alias
-					// [ FROM e ]
-					// LEFT JOIN LATERAL
-					// (
-					// 	SELECT array_agg((r$fd.pk, r$fd.dn) ORDER BY ls.n ASC)
-					// 	FROM reference r$fd
-					// 	JOIN UNNEST(e.$fd) WITH ORDINALITY AS ls(id, n)
-					// 	  ON r$fd.pk = ls.id AND r$fd.dc = e.dc
-					// 	WHERE
-					// )
-					// AS r$fd(data) ON true
-					from = from.JoinClause(CompactSQL(fmt.Sprintf(
-						`LEFT JOIN LATERAL
-					(
-						SELECT ARRAY_AGG
-						(
-							(rx.%[5]s, rx.%[6]s)
-							ORDER BY ls.n ASC
-						)
-						FROM %[1]s rx
-						JOIN UNNEST(%[3]s.%[4]s) WITH ORDINALITY AS ls(id, n)
-						  ON rx.%[5]s = ls.id AND rx.%[7]s = %[3]s.dc
-					)
-					AS %[2]s(list) ON true`,
-						table.rel.String(), right,
-						rel, fd.Name(), refPK, refDN,
-						table.dc,
-					)))
-					// FIXME: wbt_user (u.id,coalesce(u.name,u.username::text))
+					ref := struct {
+						typof customrel.DictionaryDescriptor
+						table customTable // sqlident
+						alias string
+						colpk sqlident // string
+						coldn sqlident //string
+						query SelectQ
+					}{
+						typof: elem.(*custom.Lookup).Dictionary(),
+						alias: "e", // fmt.Sprintf("x%d", fd.Num()),
+						query: psql.Select(),
+					}
+					ref.table = customDatasetTable(ref.typof)
+					ref.colpk = sqlident{ref.alias, ref.typof.Primary().Name()}
+					ref.query = ref.query.From(fmt.Sprintf(
+						"%s %s", ref.table.rel, ref.alias,
+					)).JoinClause(fmt.Sprintf(
+						"JOIN UNNEST(%[1]s.%[2]s) WITH ORDINALITY AS vs(id, n) "+
+							"ON %[3]s = vs.id AND %[4]s = %[1]s.dc",
+						rel, fd.Name(),
+						ref.colpk,
+						sqlident{ref.alias, ref.table.dc},
+					))
+					ref.query, ref.coldn = ref.table.dn(ref.query, ref.alias, nil)
+					// unescape: "::::"
+					for i, n := 0, len(ref.coldn); i < n; i++ {
+						ref.coldn[i], _, _ = BindNamed(ref.coldn[i], nil)
+					}
+					ref.query = ref.query.Column(fmt.Sprintf(
+						"ARRAY_AGG((%s,%s)ORDER BY vs.n ASC)",
+						ref.colpk, ref.coldn,
+					))
+					query, _, _ := ref.query.Prefix("(").Suffix(")").ToSql()
+					right := fmt.Sprintf("x%d", fd.Num())
+					join := JOIN{
+						Kind:   "LEFT JOIN LATERAL",
+						Source: query,
+						Alias:  (right + "(list)"),
+						Pred:   "true",
+					}
+					from = from.JoinClause(&join)
 					columns = append(
 						columns, sqlident{right, "list"}.String(),
 					)
@@ -280,28 +288,31 @@ func (ds *dataset) Columns(from SelectQ, rel string, fieldsQ ...string) (query S
 						typof customrel.DictionaryDescriptor
 						table customTable // sqlident
 						alias string
-						colpk string
-						coldn string
+						colpk sqlident // string
+						coldn sqlident // string
 					}{
 						typof: vtyp.(*custom.Lookup).Dictionary(),
-						alias: fmt.Sprintf("r%d", fd.Num()),
+						alias: fmt.Sprintf("x%d", fd.Num()),
 					}
 					// ref.table = customDatasetTable(rtyp.Dc(), ref.typof.Name())
 					ref.table = customDatasetTable(ref.typof)
-					ref.colpk = ref.typof.Primary().Name()
-					ref.coldn = lookupColumnName(ref.typof.Display().Name()) // contacts{ display: "name.common_name" }
+					ref.colpk = sqlident{ref.alias, ref.typof.Primary().Name()}
 					from = from.JoinClause(fmt.Sprintf(
-						"LEFT JOIN %[3]s %[4]s ON %[1]s.%[2]s = %[4]s.%[5]s AND %[1]s.dc = %[4]s.%[6]s",
-						rel, // [LEFT] AS "x"
-						fd.Name(),
-						ref.table.rel.String(), ref.alias, // [RIGHT] custom.dx_$lookup_repo AS x_$field
-						ref.typof.Primary().Name(),
+						"LEFT JOIN %[1]s %[2]s ON %[3]s.%[4]s = %[5]s AND %[3]s.dc = %[2]s.%[6]s",
+						ref.table.rel.String(), ref.alias, // [RIGHT] custom.d$dc_$repo AS x$num
+						rel, fd.Name(), // [LEFT] x.$fd
+						ref.colpk, // [RIGHT] $repo.$pk
 						ref.table.dc,
 					))
+					from, ref.coldn = ref.table.dn(from, ref.alias, nil)
+					// unescape: "::::"
+					for i, n := 0, len(ref.coldn); i < n; i++ {
+						ref.coldn[i], _, _ = BindNamed(ref.coldn[i], nil)
+					}
 					// ROW(x_.%field)
 					columns = append(columns, fmt.Sprintf(
-						"(SELECT(%[1]s.%[2]s,%[1]s.%[3]s)WHERE %[1]s.%[2]s NOTNULL)",
-						ref.alias, ref.colpk, ref.coldn,
+						"(SELECT(%s,%s)WHERE %[1]s NOTNULL)",
+						ref.colpk, ref.coldn,
 					))
 					scanPlan = append(scanPlan,
 						dataScanFunc[*custom.Record](func(row *custom.Record) sql.Scanner {
@@ -326,7 +337,16 @@ func (ds *dataset) Columns(from SelectQ, rel string, fieldsQ ...string) (query S
 					// // scanPlan = append(scanPlan, customRecordFieldScanPlan(fd))
 					// columns[col] = ident(rel, fd.Name())
 					// scanPlan[col] = customRecordFieldScanPlan(fd)
-					columns = append(columns, sqlident{rel, fd.Name()}.String())
+					column := sqlident{rel, fd.Name()}
+					// .well-known ?
+					if fd == display {
+						from, column = ds.table.dn(from, rel, nil)
+						// unescape: "::::"
+						for i, n := 0, len(column); i < n; i++ {
+							column[i], _, _ = BindNamed(column[i], nil)
+						}
+					}
+					columns = append(columns, column.String())
 					scanPlan = append(scanPlan, customRecordScanFieldValue(fd))
 				}
 			}

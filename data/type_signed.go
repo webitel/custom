@@ -316,7 +316,7 @@ func (dv *SignedValue) Decode(src any) error {
 				}
 				if !integral(input.NumberValue) {
 					return fmt.Errorf(
-						"convert: float number %v into int32",
+						"convert: number value %v into Int",
 						input.NumberValue,
 					)
 				}
@@ -340,7 +340,7 @@ func (dv *SignedValue) Decode(src any) error {
 				def := ref.Descriptor()
 				fd := def.Fields().ByName("kind")
 				return fmt.Errorf(
-					"convert: %s %v value into bool", strings.TrimSuffix(string(
+					"convert: %s value %v into Int", strings.TrimSuffix(string(
 						// ref.WhichOneof(def.Oneofs().ByName("kind")).Name()),
 						ref.WhichOneof(fd.ContainingOneof()).Name()),
 						"_value",

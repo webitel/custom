@@ -479,7 +479,7 @@ var (
 			&fieldSerialId,
 			// ----------------------- //
 			{
-				Id:   "name",
+				Id:   "user.name",
 				Name: "Operator",
 				Hint: "",
 				Kind: customrel.STRING,
@@ -518,7 +518,7 @@ var (
 			// // ----------------------- //
 		},
 		Primary: fieldSerialId.GetId(),
-		Display: "name",
+		Display: "user.name",
 		// Indexes: map[string]*custompb.Index{
 		// 	"user": {Unique: true},
 		// },
@@ -558,7 +558,7 @@ var (
 		Extendable: false,
 		// Administered: true,
 	}
-	CommunicationType = custompb.Dataset{
+	CommunicationTypes = custompb.Dataset{
 		Name: "Communication Types",
 		Repo: "communication_type",
 		Path: "call_center/communication_type",
@@ -623,6 +623,38 @@ var (
 		Extendable: true,
 		// Administered: true,
 	}
+	IssuePriorities = custompb.Dataset{
+		Name: "Priorities",
+		Repo: "priorities",
+		Path: "cases/priorities",
+		Fields: []*custompb.Field{
+			// ----------------------- //
+			&fieldSerialId,
+			// ----------------------- //
+			{
+				Id:   "name",
+				Name: "Priority",
+				Hint: "",
+				Kind: customrel.STRING,
+				Type: &custompb.Field_String_{
+					String_: &datatypb.Text{
+						MaxChars: 255, // Unicode
+					},
+				},
+				Value:    nil,
+				Readonly: false,
+				Required: true,
+				Disabled: false,
+				Hidden:   false,
+			},
+		},
+		Primary: fieldSerialId.GetId(),
+		Display: "name",
+		// Indexes: map[string]*custompb.Index{},
+		Readonly: true, // system
+		// Extendable: false,
+		// Administered: true,
+	}
 )
 
 func init() {
@@ -635,10 +667,11 @@ func init() {
 		&Contacts,
 		&Calendars,
 		&BlockLists,
-		&CommunicationType,
+		&CommunicationTypes,
 		&Operators,
 		&Queues,
 		&Issues,
+		&IssuePriorities,
 		// more here ...
 	} {
 

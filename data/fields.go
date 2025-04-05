@@ -112,11 +112,11 @@ func (fd *Field) typeOf(kind customrel.Kind) (rtyp Type) {
 	case customrel.INT64:
 		rtyp = Int64.As(spec.GetInt64())
 	case customrel.UINT:
-		rtyp = UnsignedAs(spec.GetUint())
+		rtyp = Uint.As(spec.GetUint())
 	case customrel.UINT32:
-		rtyp = UnsignedAs(spec.GetUint32())
+		rtyp = Uint32.As(spec.GetUint32())
 	case customrel.UINT64:
-		rtyp = UnsignedAs(spec.GetUint64())
+		rtyp = Uint64.As(spec.GetUint64())
 	case customrel.FLOAT:
 		rtyp = FloatAs(spec.GetFloat())
 	case customrel.FLOAT32:

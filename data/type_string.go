@@ -3,6 +3,7 @@ package data
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/webitel/custom/internal/pragma"
 	customrel "github.com/webitel/custom/reflect"
@@ -24,7 +25,7 @@ func StringAs(spec *datapb.Text) Type {
 var _ Type = (*String)(nil)
 
 // Kind of the data type.
-func (dt *String) Kind() customrel.Kind {
+func (*String) Kind() customrel.Kind {
 	return customrel.STRING
 }
 
@@ -41,7 +42,62 @@ func (dt *String) Err() error {
 	return nil
 }
 
-func (dt *String) Custom(pragma.DoNotImplement) {}
+func (*String) Custom(pragma.DoNotImplement) {}
+
+var stringViolations = map[string]string{
+	"multiline": "string {{.value}} violates multiline constraint",
+	"max_bytes": "string {{.value}} violates max boundary of: {{.max_bytes}} bytes",
+	"max_chars": "string {{.value}} violates max boundary of: {{.max_chars}} characters",
+}
+
+func (dt *String) violationError(kind string, val *string) error {
+	text := (*val)
+	if num := utf8.RuneCountInString(text); num > 16 {
+		text = fmt.Sprintf("%s..(+%d)", []byte(text)[0:14], (num - 16))
+	}
+	tmpl := stringViolations[kind]
+	tmpl = strings.ReplaceAll(tmpl, "{{.value}}", fmt.Sprintf("%q", text))
+	tmpl = strings.ReplaceAll(tmpl, "{{.max_bytes}}", fmt.Sprintf("%d", dt.spec.GetMaxBytes()))
+	tmpl = strings.ReplaceAll(tmpl, "{{.max_chars}}", fmt.Sprintf("%d", dt.spec.GetMaxChars()))
+	return RequestError(
+		fmt.Sprintf("custom.type.string.%s.violation", kind), ("custom: " + tmpl),
+	)
+}
+
+// Accept typical value type constraints
+func (dt *String) Accept(val *string) error {
+	if dt == nil {
+		// no constraints
+		return nil // [OK] ; whatever ..
+	}
+	if dt.err != nil {
+		// invalid type descriptor
+		return dt.err
+	}
+	if val == nil || *val == "" {
+		return nil // [OK] ; NULL or empty
+	}
+	if !utf8.ValidString(*val) {
+		return RequestError(
+			"custom.type.string.encoding.error",
+			"custom: string contains invalid UTF-8-encoded runes",
+		)
+	}
+	if dt.spec == nil {
+		// no constraints
+		return nil // [OK] ; whatever ..
+	}
+	if !dt.spec.Multiline && strings.ContainsAny(*val, "\n\r") {
+		return dt.violationError("multiline", val)
+	}
+	if max := dt.spec.MaxBytes; 0 < max && int(max) < len(*val) {
+		return dt.violationError("max_bytes", val)
+	}
+	if max := dt.spec.MaxChars; 0 < max && int(max) < utf8.RuneCountInString(*val) {
+		return dt.violationError("max_chars", val)
+	}
+	return nil // OK
+}
 
 type StringValue struct {
 	typof *String
@@ -50,82 +106,158 @@ type StringValue struct {
 
 var _ customrel.Codec = (*StringValue)(nil)
 
-// Interface of the underlying value.
-// *int[32|64]
-// *uint[32|64]
-// *float[32|64]
-// *time.Time
-// *time.Duration
-// *Lookup
-// []any | LIST
-// map[string]any | RECORD
+// Interface of the [*string] value.
 func (dv *StringValue) Interface() any {
 	return dv.value // (*string)(nil)
 }
 
 func (dv *StringValue) Decode(src any) error {
+	setValue := func(set *string) (err error) {
+		err = dv.typof.Accept(set)
+		if err == nil {
+			dv.value = set
+		}
+		return // err // ?
+	}
 	// accept: src.(type)
 	if src == nil {
-		dv.value = nil // NULL
-		return nil
+		return setValue(nil)
 	}
-	// with .typeOf constraints
-	// typeOf := v.Type().(*String)
-	setValue := func(val *string) error {
-		if val == nil {
-			dv.value = nil
-			return nil // NULL
-		}
-		dv.value = val
-		return nil // OK
-	}
-	protobufValue := func(src *structpb.Value) error {
-		if src == nil {
-			// NULL
-			dv.value = nil
-			return nil
-		}
-		switch input := src.GetKind().(type) {
-		case *structpb.Value_NullValue:
-			{
-				dv.value = nil // NULL
-			}
-		case *structpb.Value_StringValue:
-			// case *structpb.Value_NumberValue:
-			{
-				if input == nil {
-					dv.value = nil // NULL
-					break
-				}
-				return setValue(&input.StringValue)
-			}
-		// case *structpb.Value_BoolValue:
-		// case *structpb.Value_StructValue:
-		// case *structpb.Value_ListValue:
-		default:
-			{
-				ref := src.ProtoReflect()
-				def := ref.Descriptor()
-				// fd := def.Fields().ByName("kind")
-				kind := def.Oneofs().ByName("kind")
-				value := ref.WhichOneof(kind)
-				return fmt.Errorf(
-					"convert: %s %v value into String", strings.TrimSuffix(string(
-						// ref.WhichOneof(def.Oneofs().ByName("kind")).Name()),
-						// ref.WhichOneof(fd.ContainingOneof()).Name()),
-						value.Name()),
-						"_value",
-					), ref.Get(value).String(),
-				)
-			}
-		}
-		return nil
-	}
-	switch input := src.(type) {
+	switch data := src.(type) {
 	case StringValue:
 		{
-			return setValue(input.value)
+			return setValue(data.value)
 		}
+	case *StringValue:
+		{
+			if data == nil {
+				return setValue(nil)
+			}
+			if data == dv {
+				return nil // SELF
+			}
+			return setValue(data.value)
+		}
+	case string:
+		{
+			return setValue(&data)
+		}
+	case *string:
+		{
+			return setValue(data)
+		}
+	case *structpb.Value:
+		{
+			if data == nil {
+				return setValue(nil)
+			}
+			switch kind := data.Kind.(type) {
+			case nil:
+				{
+					return setValue(nil)
+				}
+			case *structpb.Value_NullValue:
+				{
+					return setValue(nil) // NULL
+				}
+			case *structpb.Value_NumberValue:
+				{
+					// if kind == nil {
+					// 	return setValue(nil) // NULL
+					// }
+					value := fmt.Sprintf("%f", kind.NumberValue)
+					return setValue(&value)
+				}
+			case *structpb.Value_StringValue:
+				{
+					// if kind == nil {
+					// 	return setValue(nil) // NULL
+					// }
+					value := kind.StringValue
+					return setValue(&value)
+				}
+			case *structpb.Value_BoolValue:
+				{
+					// if kind == nil {
+					// 	return setValue(nil) // NULL
+					// }
+					value := fmt.Sprintf("%t", kind.BoolValue)
+					return setValue(&value)
+				}
+			// case *structpb.Value_ListValue:
+			// case *structpb.Value_StructValue:
+			default:
+				{
+					ref := data.ProtoReflect()
+					def := ref.Descriptor()
+					fd := def.Fields().ByName("kind")
+					return fmt.Errorf(
+						"convert: %s value %v into String", strings.TrimSuffix(string(
+							// ref.WhichOneof(def.Oneofs().ByName("kind")).Name()),
+							ref.WhichOneof(fd.ContainingOneof()).Name()),
+							"_value",
+						), ref.Get(fd).String(),
+					)
+				}
+			}
+		}
+	case *wrapperspb.Int64Value:
+		{
+			if data == nil {
+				return setValue(nil)
+			}
+			value := fmt.Sprintf("%d", data.Value)
+			return setValue(&value)
+		}
+	case *wrapperspb.UInt64Value:
+		{
+			if data == nil {
+				return setValue(nil)
+			}
+			value := fmt.Sprintf("%d", data.Value)
+			return setValue(&value)
+		}
+	case *wrapperspb.Int32Value:
+		{
+			if data == nil {
+				return setValue(nil)
+			}
+			value := fmt.Sprintf("%d", data.Value)
+			return setValue(&value)
+		}
+	case *wrapperspb.UInt32Value:
+		{
+			if data == nil {
+				return setValue(nil)
+			}
+			value := fmt.Sprintf("%d", data.Value)
+			return setValue(&value)
+		}
+	case *wrapperspb.FloatValue:
+		{
+			if data == nil {
+				return setValue(nil)
+			}
+			value := fmt.Sprintf("%f", data.Value)
+			return setValue(&value)
+		}
+	case *wrapperspb.DoubleValue:
+		{
+			if data == nil {
+				return setValue(nil)
+			}
+			value := fmt.Sprintf("%f", data.Value)
+			return setValue(&value)
+		}
+	case *wrapperspb.StringValue:
+		{
+			if data == nil {
+				return setValue(nil)
+			}
+			value := data.Value
+			return setValue(&value)
+		}
+
 	// case int32:
 	// case *int32:
 	// case int64:
@@ -142,40 +274,15 @@ func (dv *StringValue) Decode(src any) error {
 	// case uint32, *uint32:
 	// case uint64, *uint64:
 
-	case string:
-		{
-			return setValue(&input)
-		}
-	case *string:
-		{
-			return setValue(input)
-		}
-	case *structpb.Value:
-		{
-			return protobufValue(input)
-		}
-	// case *wrapperspb.Int64Value:
-	// case *wrapperspb.UInt64Value:
-	// case *wrapperspb.Int32Value:
-	// case *wrapperspb.UInt32Value:
-	// case *wrapperspb.FloatValue:
-	// case *wrapperspb.DoubleValue:
-	case *wrapperspb.StringValue:
-		{
-			if input == nil {
-				dv.value = nil
-				break // NULL
-			}
-			return setValue(&input.Value)
-		}
 	default:
 		{
 			return fmt.Errorf(
-				"convert: %[1]T %[1]v value into String",
+				"convert: %[1]T value %[1]v into String",
 				src,
 			)
 		}
 	}
+	panic("unreachable code")
 	return nil // OK
 }
 
@@ -185,14 +292,18 @@ func (dv *StringValue) Encode(dst any) error {
 
 // Type of the data value
 func (dv *StringValue) Type() customrel.Type {
-	panic("not implemented") // TODO: Implement
+	if dv != nil {
+		return dv.typof
+	}
+	return (*String)(nil)
 }
 
 // Err to check underlying value
 //
 //	according to the data type constraints
 func (dv *StringValue) Err() error {
-	panic("not implemented") // TODO: Implement
+	// TODO: [re]design Codec interface method
+	return nil
 }
 
 func (*StringValue) Custom(pragma.DoNotImplement) {}

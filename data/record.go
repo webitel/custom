@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"sync"
+	"time"
 
 	"github.com/webitel/custom/internal/pragma"
 	customrel "github.com/webitel/custom/reflect"
@@ -82,6 +83,18 @@ func (e *Record) Set(fd customrel.FieldDescriptor, val any) error {
 	if e.typeof.Fields().Get(off) != fd {
 		return fmt.Errorf("custom: record.set( field: %s ); invalid descriptor", fd.Name())
 	}
+	// [TODO]: distinguish two different modes, like:
+	// - [enduser].Set(value)
+	// - [default].Set(value)
+	// [DESIGN]: e.BeginUpdate(); e.EndUpdate(); methods ???
+	// // CONSTRAINT: DISABLED
+	// if fd.IsDisabled() { // is [user] set ? or [default] value ?
+	// 	return RequestError(
+	// 		"custom.field.disabled.violation",
+	// 		"custom: field( %s ) is disabled",
+	// 		fd.Name(),
+	// 	)
+	// }
 	// [CHECK] data type constrains
 	rv := fd.Type().New()
 	// CONSTRAINT TYPE
@@ -98,6 +111,17 @@ func (e *Record) Set(fd customrel.FieldDescriptor, val any) error {
 	}
 	// normalized !
 	val = rv.Interface()
+	// // CONSTRAINT: REQUIRED
+	// if fd.IsRequired() {
+	// 	// must := fd.Default().Always()
+	// 	if customrel.IsNull(val) { // [FIXME]: || IsZero(?)
+	// 		return RequestError(
+	// 			"custom.field.required.violation",
+	// 			"custom: field(%s) value required but missing",
+	// 			fd.Name(),
+	// 		)
+	// 	}
+	// }
 	// UPDATE ; SAVE
 	return e.set(fd, val)
 }
@@ -183,6 +207,20 @@ func mapValue(v any) any {
 				v = object // map[string]any
 			}
 			return v
+		}
+	case *time.Duration:
+		{
+			if e == nil {
+				return nil // untyped
+			}
+			return CastDurationAsNumber(*e)
+		}
+	case *time.Time:
+		{
+			if e == nil {
+				return nil // untyped
+			}
+			return CastDateTimeAsNumber(*e)
 		}
 	}
 	// reflect Value.(Nullable) !
