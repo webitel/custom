@@ -533,7 +533,7 @@ func (ds *dataset) Update(oid any, data *structpb.Struct, partial bool) (query S
 	// [INSERT] ( DC, PK )
 	columns = append(columns, "dc")
 	values = append(values, sq.Expr((":" + paramDc)))
-	columns = append(columns, primary.Name())
+	columns = append(columns, strconv.Quote(primary.Name()))
 	values = append(values, oid)
 	recordValue := func(fd customrel.FieldDescriptor, vs any) error {
 		// Cast to (sql.Value) ..
@@ -542,7 +542,7 @@ func (ds *dataset) Update(oid any, data *structpb.Struct, partial bool) (query S
 			return err
 		}
 		// INSERT INTO
-		columns = append(columns, fd.Name())
+		columns = append(columns, strconv.Quote(fd.Name()))
 		fields = append(fields, fd)
 		// VALUE(S)
 		param := "r1c" + strconv.Itoa(fd.Num()) // fd.Name()
@@ -550,7 +550,7 @@ func (ds *dataset) Update(oid any, data *structpb.Struct, partial bool) (query S
 		values = append(values, sq.Expr((":" + param)))
 		// ON CONFLICT DO UPDATE SET
 		_, _ = fmt.Fprintf(&updateQ,
-			", %[1]s = EXCLUDED.%[1]s",
+			", %[1]q = EXCLUDED.%[1]s",
 			fd.Name(),
 		)
 		return nil
