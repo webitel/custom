@@ -505,7 +505,7 @@ func customScanFlatRows[TRow any](dst *List[TRow], plan dataScanPlan[*TRow], src
 	return // err
 }
 
-func customTypeSqlValue(dt customrel.Type, vs any) (v any, err error) {
+func CustomTypeSqlValue(dt customrel.Type, vs any) (v any, err error) {
 	if vs == nil {
 		// NULL
 		return nil, nil
@@ -557,7 +557,7 @@ func customTypeSqlValue(dt customrel.Type, vs any) (v any, err error) {
 			listV := make([]any, sizeV)
 
 			for i := 0; i < sizeV; i++ {
-				listV[i], err = customTypeSqlValue(
+				listV[i], err = CustomTypeSqlValue(
 					itemT, rv.Index(i).Interface(),
 				)
 				if err != nil {

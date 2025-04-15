@@ -171,13 +171,6 @@ func (ds *dataset) Join(from SelectQ, left string, table string, right string) (
 	)), right
 }
 
-func lookupColumnName(field string) string {
-	if dot := strings.LastIndexByte(field, '.'); dot >= 0 {
-		field = field[dot+1:]
-	}
-	return field
-}
-
 // [from]    ; SELECT .. FROM contacts AS [left]
 // [rel]     ; LEFT JOIN custom.x1_contacts AS [rel] ON (left.id, left.dc) = (right.id, right.dc)
 // [fields]  ; SELECT ROW([rel].fields,..)
@@ -537,7 +530,7 @@ func (ds *dataset) Update(oid any, data *structpb.Struct, partial bool) (query S
 	values = append(values, oid)
 	recordValue := func(fd customrel.FieldDescriptor, vs any) error {
 		// Cast to (sql.Value) ..
-		vs, err = customTypeSqlValue(fd.Type(), vs)
+		vs, err = CustomTypeSqlValue(fd.Type(), vs)
 		if err != nil {
 			return err
 		}

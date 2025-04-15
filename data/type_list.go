@@ -199,10 +199,32 @@ func (dv *ListValue) Decode(src any) error {
 			n = srcVal.Len()
 		}
 	default:
-		return fmt.Errorf(
-			"convert %T into *List[%s]",
-			src, dv.typof.elem.Kind(),
-		)
+		{
+			// try to decode as a single item value !
+			item := dtyp.New()
+			err = item.Decode(src)
+			if err != nil {
+				return fmt.Errorf(
+					"convert %T into *List[%s]",
+					src, dtyp.Kind(),
+				)
+			}
+			// append !
+			list := dv.slice
+			if !list.IsValid() {
+				list = reflect.MakeSlice(
+					reflect.SliceOf(rtyp),
+					0, 1,
+				)
+			}
+			list = reflect.Append(
+				list, reflect.ValueOf(
+					item.Interface(),
+				),
+			)
+			dv.slice = list
+			return nil
+		}
 	}
 
 	// Iterate thru input(src) slice items
