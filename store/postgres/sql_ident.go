@@ -11,7 +11,7 @@ import (
 // - consists of ASCII chars  ; [_0-9A-Za-z]
 //
 // [see]: strconv.Quote(s) for more details
-func customSqlIdentifier(s string) (ident string) {
+func CustomSqlIdentifier(s string) (ident string) {
 	// https://www.postgresql.org/docs/17/sql-syntax-lexical.html#SQL-SYNTAX-IDENTIFIERS
 	//
 	// Quoting an identifier also makes it case-sensitive,

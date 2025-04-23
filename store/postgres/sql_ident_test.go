@@ -59,7 +59,7 @@ func Test_customSqlIdentifier(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if gotIdent := customSqlIdentifier(tt.name); gotIdent != tt.wantIdent {
+			if gotIdent := CustomSqlIdentifier(tt.name); gotIdent != tt.wantIdent {
 				t.Errorf("customSqlIdentifier() = %v, want %v", gotIdent, tt.wantIdent)
 			}
 		})
