@@ -167,7 +167,7 @@ func (ds *dataset) Join(from SelectQ, left string, table string, right string) (
 	// }
 	return from.JoinClause(fmt.Sprintf(
 		"LEFT JOIN %[1]s AS %[2]s ON %[3]s.%[4]s = %[2]s.%[4]s AND %[3]s.%[5]s = %[2]s.%[5]s",
-		relx.String(), right, left, ds.rtyp.Primary().Name(), columnDc,
+		relx.String(), right, left, customSqlIdentifier(ds.rtyp.Primary().Name()), columnDc,
 	)), right
 }
 
@@ -216,7 +216,7 @@ func (ds *dataset) Columns(from SelectQ, rel string, fieldsQ ...string) (query S
 					if _, ref := elem.(*custom.Lookup); !ref {
 						// SCALAR[]
 						columns = append(
-							columns, sqlident{rel, fd.Name()}.String(),
+							columns, sqlident{rel, customSqlIdentifier(fd.Name())}.String(),
 						)
 						scanPlan = append(
 							scanPlan, customRecordScanFieldArray(fd),
@@ -237,13 +237,13 @@ func (ds *dataset) Columns(from SelectQ, rel string, fieldsQ ...string) (query S
 						query: psql.Select(),
 					}
 					ref.table = customDatasetTable(ref.typof)
-					ref.colpk = sqlident{ref.alias, ref.typof.Primary().Name()}
+					ref.colpk = sqlident{ref.alias, customSqlIdentifier(ref.typof.Primary().Name())}
 					ref.query = ref.query.From(fmt.Sprintf(
 						"%s %s", ref.table.rel, ref.alias,
 					)).JoinClause(fmt.Sprintf(
 						"JOIN UNNEST(%[1]s.%[2]s) WITH ORDINALITY AS vs(id, n) "+
 							"ON %[3]s = vs.id AND %[4]s = %[1]s.dc",
-						rel, fd.Name(),
+						rel, customSqlIdentifier(fd.Name()),
 						ref.colpk,
 						sqlident{ref.alias, ref.table.dc},
 					))
@@ -289,11 +289,11 @@ func (ds *dataset) Columns(from SelectQ, rel string, fieldsQ ...string) (query S
 					}
 					// ref.table = customDatasetTable(rtyp.Dc(), ref.typof.Name())
 					ref.table = customDatasetTable(ref.typof)
-					ref.colpk = sqlident{ref.alias, ref.typof.Primary().Name()}
+					ref.colpk = sqlident{ref.alias, customSqlIdentifier(ref.typof.Primary().Name())}
 					from = from.JoinClause(fmt.Sprintf(
 						"LEFT JOIN %[1]s %[2]s ON %[3]s.%[4]s = %[5]s AND %[3]s.dc = %[2]s.%[6]s",
 						ref.table.rel.String(), ref.alias, // [RIGHT] custom.d$dc_$repo AS x$num
-						rel, fd.Name(), // [LEFT] x.$fd
+						rel, customSqlIdentifier(fd.Name()), // [LEFT] x.$fd
 						ref.colpk, // [RIGHT] $repo.$pk
 						ref.table.dc,
 					))
@@ -330,7 +330,7 @@ func (ds *dataset) Columns(from SelectQ, rel string, fieldsQ ...string) (query S
 					// // scanPlan = append(scanPlan, customRecordFieldScanPlan(fd))
 					// columns[col] = ident(rel, fd.Name())
 					// scanPlan[col] = customRecordFieldScanPlan(fd)
-					column := sqlident{rel, fd.Name()}
+					column := sqlident{rel, customSqlIdentifier(fd.Name())}
 					// .well-known ?
 					if fd == display {
 						from, column = ds.table.dn(from, rel, nil)
@@ -400,7 +400,7 @@ func (ds *dataset) Columns(from SelectQ, rel string, fieldsQ ...string) (query S
 		sep = ","
 	}
 	// row.WriteByte(')')
-	fmt.Fprintf(&row, ") WHERE %s.%s NOTNULL)", rel, primary.Name()) // AS "custom"
+	fmt.Fprintf(&row, ") WHERE %s.%s NOTNULL)", rel, customSqlIdentifier(primary.Name())) // AS "custom"
 	from = from.Column(row.String())
 	scan = func(rec RecordExtendable) sql.Scanner {
 		return ScanFunc(func(src any) (err error) {
@@ -514,7 +514,7 @@ func (ds *dataset) Update(oid any, data *structpb.Struct, partial bool) (query S
 	_, _ = fmt.Fprintf(&updateQ,
 		"ON CONFLICT (%s) DO UPDATE SET"+
 			" ver = (%[2]s.ver + 1)", // [FIXME]: + (OLD.* IS DISTINCT FROM NEW.*) ? 1 : 0
-		primary.Name(), rel,
+		customSqlIdentifier(primary.Name()), rel,
 	)
 	n := len(record.Fields())
 	if !partial {
@@ -526,7 +526,7 @@ func (ds *dataset) Update(oid any, data *structpb.Struct, partial bool) (query S
 	// [INSERT] ( DC, PK )
 	columns = append(columns, "dc")
 	values = append(values, sq.Expr((":" + paramDc)))
-	columns = append(columns, strconv.Quote(primary.Name()))
+	columns = append(columns, customSqlIdentifier(primary.Name()))
 	values = append(values, oid)
 	recordValue := func(fd customrel.FieldDescriptor, vs any) error {
 		// Cast to (sql.Value) ..
@@ -535,7 +535,7 @@ func (ds *dataset) Update(oid any, data *structpb.Struct, partial bool) (query S
 			return err
 		}
 		// INSERT INTO
-		columns = append(columns, strconv.Quote(fd.Name()))
+		columns = append(columns, customSqlIdentifier(fd.Name()))
 		fields = append(fields, fd)
 		// VALUE(S)
 		param := "r1c" + strconv.Itoa(fd.Num()) // fd.Name()
@@ -543,8 +543,8 @@ func (ds *dataset) Update(oid any, data *structpb.Struct, partial bool) (query S
 		values = append(values, sq.Expr((":" + param)))
 		// ON CONFLICT DO UPDATE SET
 		_, _ = fmt.Fprintf(&updateQ,
-			", %[1]q = EXCLUDED.%[1]s",
-			fd.Name(),
+			", %[1]s = EXCLUDED.%[1]s",
+			customSqlIdentifier(fd.Name()),
 		)
 		return nil
 	}

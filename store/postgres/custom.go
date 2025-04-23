@@ -109,7 +109,7 @@ func customColumnName(name string) columnQuery {
 	// 	name = name[dot+1:]
 	// }
 	return func(query SelectQ, left string, _ names) (SelectQ, sqlident) {
-		return query, sqlident{left, name}
+		return query, sqlident{left, customSqlIdentifier(name)}
 	}
 }
 
