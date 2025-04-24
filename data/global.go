@@ -406,6 +406,40 @@ var (
 		Extendable: true,
 		// Administered: true,
 	}
+	ContactGroups = custompb.Dataset{
+		Name: "Contact Groups",
+		Repo: "groups", // "contact_groups",
+		Path: "contacts/groups",
+		Fields: []*custompb.Field{
+			// ----------------------- //
+			&fieldSerialId,
+			// ----------------------- //
+			{
+				Id:   "name",
+				Name: "Group",
+				Hint: "",
+				Kind: customrel.STRING,
+				Type: &custompb.Field_String_{
+					String_: &datatypb.Text{
+						MaxChars: 255, // Unicode
+					},
+				},
+				// Value: &custompb.Field_Default{
+				// 	Default: structpb.NewStringValue("$(.name.given_name)$(if .name.middle_name) $(.name.middle_name)$(end)$(if .name.family_name) $(.name.family_name)$(end)"),
+				// },
+				Readonly: false,
+				Required: true,
+				Disabled: false,
+				Hidden:   false,
+			},
+		},
+		Primary: fieldSerialId.GetId(),
+		Display: "name",
+		// Indexes: map[string]*custompb.Index{},
+		Readonly: true, // system
+		// Extendable: false,
+		// Administered: false,
+	}
 	Calendars = custompb.Dataset{
 		Name: "Calendars",
 		Repo: "calendars",
@@ -623,9 +657,41 @@ var (
 		Extendable: true,
 		// Administered: true,
 	}
+	IssueSources = custompb.Dataset{
+		Name: "Case Sources",
+		Repo: "sources", // "case_sources",
+		Path: "cases/sources",
+		Fields: []*custompb.Field{
+			// ----------------------- //
+			&fieldSerialId,
+			// ----------------------- //
+			{
+				Id:   "name",
+				Name: "Source",
+				Hint: "",
+				Kind: customrel.STRING,
+				Type: &custompb.Field_String_{
+					String_: &datatypb.Text{
+						MaxChars: 255, // Unicode
+					},
+				},
+				Value:    nil,
+				Readonly: false,
+				Required: true,
+				Disabled: false,
+				Hidden:   false,
+			},
+		},
+		Primary: fieldSerialId.GetId(),
+		Display: "name",
+		// Indexes: map[string]*custompb.Index{},
+		Readonly: true, // system
+		// Extendable: false,
+		// Administered: false,
+	}
 	IssuePriorities = custompb.Dataset{
 		Name: "Priorities",
-		Repo: "priorities",
+		Repo: "priorities", // "case_priorities",
 		Path: "cases/priorities",
 		Fields: []*custompb.Field{
 			// ----------------------- //
@@ -665,12 +731,14 @@ func init() {
 		&Users,
 		&Roles,
 		&Contacts,
+		&ContactGroups,
 		&Calendars,
 		&BlockLists,
 		&CommunicationTypes,
 		&Operators,
 		&Queues,
 		&Issues,
+		&IssueSources,
 		&IssuePriorities,
 		// more here ...
 	} {

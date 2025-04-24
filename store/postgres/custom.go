@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"fmt"
-	"path"
 	"strings"
 
 	sq "github.com/Masterminds/squirrel"
@@ -152,28 +151,52 @@ type customTable struct {
 }
 
 var knownTableMap = map[string]customTable{ // string
-	"roles":                          {rel: sqlident{"directory", "wbt_auth"}, dc: "dc", dn: customRoleName},                // "directory.wbt_auth",
-	"users":                          {rel: sqlident{"directory", "wbt_user"}, dc: "dc", dn: customUserName},                // "directory.wbt_user",
-	"cases":                          {rel: sqlident{"cases", "case"}, dc: "dc", dn: customColumnName("name")},              // "cases.case",
-	"cases/priorities":               {rel: sqlident{"cases", "priority"}, dc: "dc", dn: customColumnName("name")},          // "cases.priority",
-	"contacts":                       {rel: sqlident{"contacts", "contact"}, dc: "dc", dn: customColumnName("common_name")}, // "contacts.contact",
-	"calendars":                      {rel: sqlident{"flow", "calendar"}, dc: "domain_id", dn: customColumnName("name")},    // flow.calendar
-	"call_center/list":               {rel: sqlident{"call_center", "cc_list"}, dc: "domain_id", dn: customColumnName("name")},
-	"call_center/agents":             {rel: sqlident{"call_center", "cc_agent"}, dc: "domain_id", dn: customAgentName},
-	"call_center/queues":             {rel: sqlident{"call_center", "cc_queue"}, dc: "domain_id", dn: customColumnName("name")},
-	"call_center/communication_type": {rel: sqlident{"call_center", "cc_communication"}, dc: "domain_id", dn: customColumnName("name")},
+	"roles":                            {rel: sqlident{"directory", "wbt_auth"}, dc: "dc", dn: customRoleName},                // "directory.wbt_auth",
+	"users":                            {rel: sqlident{"directory", "wbt_user"}, dc: "dc", dn: customUserName},                // "directory.wbt_user",
+	"cases":                            {rel: sqlident{"cases", "case"}, dc: "dc", dn: customColumnName("name")},              // "cases.case",
+	"case_sources:cases/sources":       {rel: sqlident{"cases", "source"}, dc: "dc", dn: customColumnName("name")},            // "cases.source",
+	"case_priorities:cases/priorities": {rel: sqlident{"cases", "priority"}, dc: "dc", dn: customColumnName("name")},          // "cases.priority",
+	"contacts":                         {rel: sqlident{"contacts", "contact"}, dc: "dc", dn: customColumnName("common_name")}, // "contacts.contact",
+	"contact_groups:contacts/groups":   {rel: sqlident{"contacts", "group"}, dc: "dc", dn: customColumnName("name")},          // "contacts.group",
+	"calendars":                        {rel: sqlident{"flow", "calendar"}, dc: "domain_id", dn: customColumnName("name")},    // "flow.calendar",
+	"block_lists:call_center/list":     {rel: sqlident{"call_center", "cc_list"}, dc: "domain_id", dn: customColumnName("name")},
+	"agents:call_center/agents":        {rel: sqlident{"call_center", "cc_agent"}, dc: "domain_id", dn: customAgentName},
+	"queues:call_center/queues":        {rel: sqlident{"call_center", "cc_queue"}, dc: "domain_id", dn: customColumnName("name")},
+	"communication_types:call_center/communication_type": {rel: sqlident{"call_center", "cc_communication"}, dc: "domain_id", dn: customColumnName("name")},
 }
 
+// func init() {
+// 	// also register UNIQUE type name without base directory
+// 	for pkg, rel := range knownTableMap {
+// 		dir, name := path.Split(pkg)
+// 		if dir != "" && name != "" {
+// 			if _, ok := knownTableMap[name]; ok {
+// 				panic("custom: duplicate register known type table")
+// 			}
+// 			knownTableMap[name] = rel
+// 		}
+// 	}
+// }
+
 func init() {
-	// also register UNIQUE type name without base directory
-	for pkg, rel := range knownTableMap {
-		dir, name := path.Split(pkg)
-		if dir != "" && name != "" {
-			if _, ok := knownTableMap[name]; ok {
-				panic("custom: duplicate register known type table")
-			}
-			knownTableMap[name] = rel
+	// [re]register known table for each name[:name]
+	keys := make([]string, 0, len(knownTableMap))
+	for path := range knownTableMap {
+		keys = append(keys, path) // gather ..
+	}
+	for _, path := range keys {
+		names := strings.Split(path, ":")
+		if len(names) == 1 && path == names[0] {
+			continue // single
 		}
+		known := knownTableMap[path]
+		for _, name := range names {
+			if _, ok := knownTableMap[name]; ok {
+				panic(fmt.Errorf("postgres: register custom(%s) name duplicate", name))
+			}
+			knownTableMap[name] = known
+		}
+		delete(knownTableMap, path)
 	}
 }
 
