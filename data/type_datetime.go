@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
@@ -155,6 +156,10 @@ func (dv *DateTimeValue) Decode(src any) error {
 			if err == nil {
 				return setValue(&date)
 			}
+		}
+		// finally: try to decode as timestamp[.ms] number
+		if ts, err := strconv.ParseFloat(text, 64); err == nil {
+			return setDouble(&ts)
 		}
 		return fmt.Errorf(
 			"convert: string %q value into DateTime",
