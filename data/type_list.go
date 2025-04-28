@@ -177,6 +177,18 @@ func (dv *ListValue) Decode(src any) error {
 					src, dtyp.Kind(),
 				)
 			}
+		case string:
+			{
+				// try to decode as inline JSON array string
+				// used to specify filter assertion value(s)
+				// e.g.: `?filters=roles=[4,7]`
+				if n := len(v); n > 1 && v[0] == '[' && v[n-1] == ']' {
+					var vs structpb.ListValue // Value
+					if e := vs.UnmarshalJSON([]byte(v)); e == nil {
+						return vs.GetValues(), nil // indirect(&vs)
+					}
+				}
+			}
 		}
 		return v, nil
 	}
