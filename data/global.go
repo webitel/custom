@@ -513,7 +513,7 @@ var (
 			&fieldSerialId,
 			// ----------------------- //
 			{
-				Id:   "user.name",
+				Id:   "name", // "user.name",
 				Name: "Operator",
 				Hint: "",
 				Kind: customrel.STRING,
@@ -552,7 +552,7 @@ var (
 			// // ----------------------- //
 		},
 		Primary: fieldSerialId.GetId(),
-		Display: "user.name",
+		Display: "name", // "user.name",
 		// Indexes: map[string]*custompb.Index{
 		// 	"user": {Unique: true},
 		// },
