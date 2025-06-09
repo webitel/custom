@@ -8,11 +8,12 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/protobuf/types/known/structpb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
+
 	"github.com/webitel/custom/internal/pragma"
 	customrel "github.com/webitel/custom/reflect"
 	datapb "github.com/webitel/proto/gen/custom/data"
-	"google.golang.org/protobuf/types/known/structpb"
-	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 type DateTime struct {
@@ -119,8 +120,7 @@ func (dv *DateTimeValue) Decode(src any) error {
 		if set == nil {
 			return setValue(nil)
 		}
-		// timestamp (seconds)
-		date := time.Unix(*set, 0).UTC()
+		date := CastNumberAsDateTime(*set, time.Millisecond)
 		return setValue(&date)
 	}
 	setDouble := func(set *float64) error {
@@ -333,37 +333,46 @@ func (dv *DateTimeValue) Err() error {
 
 func (dv *DateTimeValue) Custom(pragma.DoNotImplement) {}
 
-// Accept [pres]:
-// - time.Second
-// - time.Millisecond
-// - time.Microsecond
-// - time.Nanosecond
-func CastNumberAsDateTime(v float64, pres time.Duration) time.Time {
-	const second int64 = 1e9 // time.Second
-	toNsec := second / int64(pres)
-	// tsec, nsec := math.Modf(v)
-	// // return time.Unix(int64(tsec), int64(nsec*float64(pres))*toNsec)
-	// return time.Unix(int64(tsec), int64(nsec*float64(toNsec))*int64(pres))
-	tsec := int64(v)
-	nsec := int64((v * float64(toNsec))) % toNsec
-	return time.Unix(tsec, (nsec * int64(pres))).UTC()
-	// round := func(num float64) int {
-	// 	return int(num + math.Copysign(0.5, num))
-	// }
-	// toFixed := func(num float64, precision int) float64 {
-	// 	output := math.Pow(10, float64(precision))
-	// 	return float64(round(num*output)) / output
-	// }
+// CastNumberAsDateTime converts a numeric timestamp (in seconds, milliseconds, microseconds, or nanoseconds)
+// into a time.Time value with the specified precision.
+// It accepts both int64 and float64 input types, automatically inferring the unit based on magnitude.
+//
+// Note: When using float64 to represent timestamps (especially large ones), you may lose precision
+// due to limitations in IEEE-754 binary floating-point representation. For example, float64 can
+// precisely represent only about 15–17 decimal digits, which is not enough for nanosecond precision
+// on large epoch timestamps. Prefer int64 for precise time values whenever possible.
+func CastNumberAsDateTime[T int64 | float64](v T, pres time.Duration) time.Time {
+	var ns int64
 
-	// return time.Unix(int64(tsec), int64(nsec*1e9))
-	// tsec, nsec := math.Modf(toFixed(v, 6))
-	// nsec = (nsec * precWant) / precWant
-	// return time.Unix(int64(tsec), int64((nsec*1e9)/float64(precSkrew)))
-	// return time.Unix(int64(tsec), int64(nsec*precWant)*precSkrew)
+	// Choose precision based on magnitude
+	switch {
+	case v > 1e18:
+		ns = int64(v) // time.Nanosecond
+	case v > 1e15:
+		ns = int64(v * 1e3) // time.Microsecond
+	case v > 1e12:
+		ns = int64(v * 1e6) // time.Millisecond
+	default:
+		const second int64 = 1e9 // time.Second
+		toNsec := second / int64(pres)
+
+		tsec := int64(v)
+		nsec := int64(float64(v)*float64(toNsec)) % toNsec
+
+		return time.Unix(tsec, nsec*int64(pres)).UTC()
+	}
+
+	return time.Unix(ns/1e9, ns%1e9).UTC().Truncate(pres)
 }
 
-// Cast time.Time value as float64.("tsec[.nsec]") decimal number
-func CastDateTimeAsNumber(v time.Time) float64 {
-	tsec, nsec := v.Unix(), int64(v.Nanosecond())
-	return float64(tsec) + (float64(nsec) / 1e9) // time.Second
+// CastDateTimeAsNumber converts a time.Time value into an int64 timestamp "tsec[.pres]",
+// where `pres` controls the precision of the result.
+//
+// `pres` must be one of:
+//   - time.Second
+//   - time.Millisecond
+//   - time.Microsecond
+//   - time.Nanosecond
+func CastDateTimeAsNumber(v time.Time, pres time.Duration) int64 {
+	return v.UnixNano() / int64(pres)
 }

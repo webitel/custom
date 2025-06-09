@@ -6,10 +6,11 @@ import (
 	"sync"
 	"time"
 
+	"google.golang.org/protobuf/types/known/structpb"
+
 	"github.com/webitel/custom/internal/pragma"
 	customrel "github.com/webitel/custom/reflect"
 	custompb "github.com/webitel/proto/gen/custom"
-	"google.golang.org/protobuf/types/known/structpb"
 )
 
 type Record struct {
@@ -220,7 +221,7 @@ func mapValue(v any) any {
 			if e == nil {
 				return nil // untyped
 			}
-			return CastDateTimeAsNumber(*e)
+			return CastDateTimeAsNumber(*e, time.Millisecond)
 		}
 	}
 	// reflect Value.(Nullable) !
